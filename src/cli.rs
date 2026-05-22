@@ -40,7 +40,6 @@ impl Cli {
         let cfg = FilterConfig {
             min_qual: self.min_qual,
             pass_only: self.pass_only,
-            ..FilterConfig::default()
         };
 
         let mut out: Box<dyn std::io::Write> = if self.output == "-" {
