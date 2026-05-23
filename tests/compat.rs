@@ -59,6 +59,36 @@ fn pass_only_matches_bcftools() {
         kept_positions(&theirs.stdout)
     );
 }
+// FILTER fields with semicolon-separated tags (e.g. "PASS;LowQual") must be kept
+// by --pass-only when ANY tag is PASS — matching `bcftools view -f PASS,.`.
+// The original implementation checked the whole field as a string literal, so
+// "PASS;LowQual" != "PASS" and was wrongly dropped.
+#[test]
+fn pass_only_compound_filter_matches_bcftools() {
+    if !bcftools_available() {
+        eprintln!("skipping: bcftools not found");
+        return;
+    }
+    let vcf = fixture("mixed_filters.vcf");
+    let ours_out = Command::new(ours())
+        .arg("--pass-only")
+        .arg(&vcf)
+        .output()
+        .unwrap();
+    assert!(ours_out.status.success());
+    let theirs = Command::new("bcftools")
+        .args(["view", "-f", "PASS,."])
+        .arg(&vcf)
+        .output()
+        .unwrap();
+    assert!(theirs.status.success());
+    assert_eq!(
+        kept_positions(&ours_out.stdout),
+        kept_positions(&theirs.stdout),
+        "compound FILTER like PASS;LowQual must be kept when PASS is one of the tags"
+    );
+}
+
 #[test]
 fn runs() {
     let out = Command::new(ours())

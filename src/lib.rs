@@ -60,7 +60,12 @@ pub fn filter_vcf(
 
         if cfg.pass_only {
             let f = filter.unwrap_or(b".");
-            if f != b"PASS" && f != b"." {
+            // bcftools `-f PASS,.` semantics: keep the record when ANY of the
+            // semicolon-separated FILTER tags is PASS or the missing-value dot.
+            let keep = f
+                .split(|&b| b == b';')
+                .any(|tag| tag == b"PASS" || tag == b".");
+            if !keep {
                 continue;
             }
         }

@@ -1,0 +1,11 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##FILTER=<ID=LowQual,Description="Low quality">
+##FILTER=<ID=LowDP,Description="Low depth">
+##contig=<ID=chr1>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	A	G	60	PASS	.
+chr1	200	.	C	T	40	LowQual	.
+chr1	300	.	G	A	50	.	.
+chr1	400	.	T	C	30	PASS;LowQual	.
+chr1	500	.	A	T	20	LowQual;LowDP	.
