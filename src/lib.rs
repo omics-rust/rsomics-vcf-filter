@@ -2,11 +2,16 @@ use std::io::{self, Read};
 use std::path::Path;
 
 use rsomics_common::{Result, RsomicsError};
+use rsomics_vcf_expr::{EvalContext, Expr};
 
 #[derive(Default)]
 pub struct FilterConfig {
     pub min_qual: Option<f32>,
     pub pass_only: bool,
+    /// Include expression: keep records where expr is true (from `-i`).
+    pub include_expr: Option<Expr>,
+    /// Exclude expression: keep records where expr is false (from `-e`).
+    pub exclude_expr: Option<Expr>,
 }
 
 pub struct FilterStats {
@@ -14,10 +19,13 @@ pub struct FilterStats {
     pub passed: u64,
 }
 
-/// Filter VCF records by FILTER status and/or QUAL, passing kept lines through
-/// verbatim. A tab byte-scan reads only the QUAL (col 5) and FILTER (col 6)
-/// columns — no full record parse or re-serialization — so kept records keep
-/// their exact original bytes (header included).
+/// Filter VCF records by FILTER status, QUAL, and optional bcftools-style
+/// include/exclude expressions.
+///
+/// A tab byte-scan reads only the QUAL (col 5) and FILTER (col 6) columns
+/// for the basic checks — no full record parse for kept records — so their
+/// original bytes are preserved verbatim.  The expression engine reads the
+/// full line when `-i/-e` is in use.
 pub fn filter_vcf(
     input: &Path,
     output: &mut dyn io::Write,
@@ -33,6 +41,17 @@ pub fn filter_vcf(
         d
     } else {
         raw
+    };
+
+    let eval_ctx: Option<EvalContext> = match (&cfg.include_expr, &cfg.exclude_expr) {
+        (Some(expr), None) => Some(EvalContext::new(expr.clone(), false)),
+        (None, Some(expr)) => Some(EvalContext::new(expr.clone(), true)),
+        (None, None) => None,
+        (Some(_), Some(_)) => {
+            return Err(RsomicsError::InvalidInput(
+                "only one of -i or -e may be specified".into(),
+            ));
+        }
     };
 
     let mut stats = FilterStats {
@@ -85,6 +104,20 @@ pub fn filter_vcf(
                 if val < min_q {
                     continue;
                 }
+            }
+        }
+        if let Some(ctx) = &eval_ctx {
+            let line_str = std::str::from_utf8(line)
+                .map_err(|_| RsomicsError::InvalidInput("non-UTF-8 VCF line".into()))?;
+            let result = ctx
+                .eval_line(line_str, 0)
+                .map_err(|e| RsomicsError::InvalidInput(format!("expression eval error: {e}")))?;
+            // For site-level filtering: if any sample passes, keep the record.
+            // For INFO/QUAL expressions the result is uniform across samples.
+            // A record with no samples: result.pass has one element.
+            let site_pass = result.pass.iter().any(|&p| p);
+            if !site_pass {
+                continue;
             }
         }
 

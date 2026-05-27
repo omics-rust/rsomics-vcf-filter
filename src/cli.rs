@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use rsomics_common::{CommonFlags, Result, RsomicsError, Tool, ToolMeta};
 use rsomics_help::{Example, FlagSpec, HelpSpec, Origin, Section};
+use rsomics_vcf_expr::parse_expr;
 
 use rsomics_vcf_filter::{FilterConfig, filter_vcf};
 
@@ -31,15 +32,50 @@ pub struct Cli {
     #[arg(long = "min-qual")]
     min_qual: Option<f32>,
 
+    /// Include expression: keep records where the bcftools-style filter
+    /// expression is true (e.g. `FMT/DP>=10 && QUAL>=30`).
+    #[arg(
+        short = 'i',
+        long = "include",
+        value_name = "EXPR",
+        conflicts_with = "exclude"
+    )]
+    include: Option<String>,
+
+    /// Exclude expression: keep records where the bcftools-style filter
+    /// expression is false.
+    #[arg(
+        short = 'e',
+        long = "exclude",
+        value_name = "EXPR",
+        conflicts_with = "include"
+    )]
+    exclude: Option<String>,
+
     #[command(flatten)]
     pub common: CommonFlags,
 }
 
 impl Cli {
     pub fn execute(self) -> Result<()> {
+        let include_expr = self
+            .include
+            .as_deref()
+            .map(parse_expr)
+            .transpose()
+            .map_err(|e| RsomicsError::InvalidInput(format!("bad -i expression: {e}")))?;
+        let exclude_expr = self
+            .exclude
+            .as_deref()
+            .map(parse_expr)
+            .transpose()
+            .map_err(|e| RsomicsError::InvalidInput(format!("bad -e expression: {e}")))?;
+
         let cfg = FilterConfig {
             min_qual: self.min_qual,
             pass_only: self.pass_only,
+            include_expr,
+            exclude_expr,
         };
 
         let mut out: Box<dyn std::io::Write> = if self.output == "-" {
@@ -121,12 +157,40 @@ pub static HELP: HelpSpec = HelpSpec {
                 description: "Minimum QUAL score.",
                 why_default: None,
             },
+            FlagSpec {
+                short: Some('i'),
+                long: "include",
+                aliases: &[],
+                value: Some("<EXPR>"),
+                type_hint: Some("String"),
+                required: false,
+                default: None,
+                description: "Keep records where the bcftools-style expression is true.",
+                why_default: None,
+            },
+            FlagSpec {
+                short: Some('e'),
+                long: "exclude",
+                aliases: &[],
+                value: Some("<EXPR>"),
+                type_hint: Some("String"),
+                required: false,
+                default: None,
+                description: "Keep records where the bcftools-style expression is false.",
+                why_default: None,
+            },
         ],
     }],
-    examples: &[Example {
-        description: "Keep only PASS variants with QUAL >= 30",
-        command: "rsomics-vcf-filter --pass-only --min-qual 30 input.vcf > filtered.vcf",
-    }],
+    examples: &[
+        Example {
+            description: "Keep only PASS variants with QUAL >= 30",
+            command: "rsomics-vcf-filter --pass-only --min-qual 30 input.vcf > filtered.vcf",
+        },
+        Example {
+            description: "Keep records where FORMAT/DP >= 10",
+            command: "rsomics-vcf-filter -i 'FMT/DP>=10' input.vcf > filtered.vcf",
+        },
+    ],
     json_result_schema_doc: None,
 };
 
