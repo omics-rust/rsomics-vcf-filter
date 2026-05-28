@@ -12,6 +12,11 @@ description = "VCF/BCF record filtering by region, quality, INFO/FORMAT fields â
 name = "rsomics-vcf-filter"
 path = "src/main.rs"
 
+
+[lib]
+name = "rsomics_vcf_filter"
+path = "src/lib.rs"
+doctest = false
 [dependencies]
 rsomics-common = { version = "0.6" }
 rsomics-help = { version = "0.3" }
